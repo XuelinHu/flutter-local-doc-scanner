@@ -27,3 +27,7 @@
 ## GitHub Commit Language
 
 - Use English for all GitHub commit messages and pull/push related commit notes.
+
+## Port allocation
+
+Web: 原生移动应用，不监听 HTTP 端口. API/services: 无独立后端. See `PORTS.md`; keep dev/preview ports fixed and fail on conflicts.
