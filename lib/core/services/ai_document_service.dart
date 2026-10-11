@@ -59,7 +59,7 @@ class AiDocumentService {
   static const _maxErrorBytes = 8 * 1024;
   static const _maxResponseBytes = 256 * 1024;
 
-  static Uri validateEndpoint(String value) {
+  static Uri validateEndpoint(String value, {String apiKey = ''}) {
     final uri = Uri.tryParse(value.trim());
     if (uri == null ||
         uri.host.isEmpty ||
@@ -73,10 +73,16 @@ class AiDocumentService {
     if (uri.scheme == 'http' && !_isPrivateHost(uri.host)) {
       throw const AiDocumentException('HTTP 仅允许内网地址；公网服务请使用 HTTPS。');
     }
+    if (uri.scheme == 'http' &&
+        apiKey.trim().isNotEmpty &&
+        !_isLoopbackHost(uri.host)) {
+      throw const AiDocumentException('发送 API Key 必须使用 HTTPS；HTTP 仅允许本机回环地址。');
+    }
     return uri;
   }
 
   static bool _isPrivateHost(String host) {
+    if (host == '::1') return true;
     final parts = host.split('.');
     final octets = parts.map(int.tryParse).toList();
     if (octets.length != 4 ||
@@ -90,6 +96,9 @@ class AiDocumentService {
         (first == 172 && second >= 16 && second <= 31) ||
         (first == 192 && second == 168);
   }
+
+  static bool _isLoopbackHost(String host) =>
+      host == 'localhost' || host == '127.0.0.1' || host == '::1';
 
   Future<bool> checkOllamaVisionCapability({
     required AiDocumentSettings settings,
@@ -144,7 +153,7 @@ class AiDocumentService {
     required List<int> imageBytes,
     required String fileName,
   }) async {
-    final uri = validateEndpoint(settings.endpoint);
+    final uri = validateEndpoint(settings.endpoint, apiKey: settings.apiKey);
     if (settings.model.trim().isEmpty) {
       throw const AiDocumentException('请填写支持图像输入的模型名称。');
     }

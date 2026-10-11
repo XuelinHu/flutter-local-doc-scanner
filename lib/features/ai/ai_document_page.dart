@@ -99,7 +99,7 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
 
   Future<void> _saveSettings() async {
     try {
-      AiDocumentService.validateEndpoint(_endpoint.text);
+      AiDocumentService.validateEndpoint(_endpoint.text, apiKey: _apiKey.text);
       if (_model.text.trim().isEmpty) {
         throw const AiDocumentException('请填写支持图像输入的模型名称。');
       }
@@ -183,7 +183,10 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
           TextField(
             controller: _apiKey,
             obscureText: true,
-            decoration: const InputDecoration(labelText: 'API Key（本机安全存储，可留空）'),
+            decoration: const InputDecoration(
+              labelText: 'API Key（本机安全存储，可留空）',
+              helperText: '内网 Ollama 可无密钥使用 HTTP；填写密钥时接口必须使用 HTTPS。',
+            ),
           ),
           Wrap(
             alignment: WrapAlignment.end,

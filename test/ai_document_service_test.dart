@@ -19,6 +19,27 @@ void main() {
       ).host,
       '192.168.1.9',
     );
+    expect(
+      () => AiDocumentService.validateEndpoint(
+        'http://192.168.1.9:8999/v1/chat/completions',
+        apiKey: 'test-key',
+      ),
+      throwsA(isA<AiDocumentException>()),
+    );
+    expect(
+      AiDocumentService.validateEndpoint(
+        'http://127.0.0.1:8999/v1/chat/completions',
+        apiKey: 'test-key',
+      ).host,
+      '127.0.0.1',
+    );
+    expect(
+      AiDocumentService.validateEndpoint(
+        'https://models.example.com/v1/chat/completions',
+        apiKey: 'test-key',
+      ).scheme,
+      'https',
+    );
   });
 
   test(
@@ -155,6 +176,27 @@ void main() {
         fileName: 'page.jpg',
       ),
       throwsA(isA<AiDocumentException>()),
+    );
+  });
+
+  test('refuses to send an API key to a LAN HTTP endpoint', () async {
+    await expectLater(
+      const AiDocumentService().recognizeImage(
+        settings: const AiDocumentSettings(
+          endpoint: 'http://192.168.1.9:8999/v1/chat/completions',
+          model: 'vision-test',
+          apiKey: 'test-key',
+        ),
+        imageBytes: [1, 2, 3],
+        fileName: 'page.png',
+      ),
+      throwsA(
+        isA<AiDocumentException>().having(
+          (error) => error.message,
+          'message',
+          contains('必须使用 HTTPS'),
+        ),
+      ),
     );
   });
 
