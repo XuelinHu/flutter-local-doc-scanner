@@ -8,14 +8,23 @@ import 'package:uuid/uuid.dart';
 import '../constants/app_constants.dart';
 
 class LocalStorageService {
-  LocalStorageService._();
+  LocalStorageService({
+    Future<Directory> Function()? cacheDirectoryProvider,
+    Future<Directory> Function()? documentsDirectoryProvider,
+  }) : _cacheDirectoryProvider = cacheDirectoryProvider,
+       _documentsDirectoryProvider = documentsDirectoryProvider;
 
-  static final instance = LocalStorageService._();
+  static final instance = LocalStorageService();
   static const _uuid = Uuid();
 
-  Future<Directory> get _cacheDir async => getTemporaryDirectory();
+  final Future<Directory> Function()? _cacheDirectoryProvider;
+  final Future<Directory> Function()? _documentsDirectoryProvider;
 
-  Future<Directory> get _docsDir async => getApplicationDocumentsDirectory();
+  Future<Directory> get _cacheDir =>
+      _cacheDirectoryProvider?.call() ?? getTemporaryDirectory();
+
+  Future<Directory> get _docsDir =>
+      _documentsDirectoryProvider?.call() ?? getApplicationDocumentsDirectory();
 
   Future<String> getCacheDirectoryPath() async {
     final directory = await _cacheDir;
@@ -45,6 +54,45 @@ class LocalStorageService {
     );
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
+  }
+
+  Future<void> deleteTempImage(String filePath) async {
+    final directory = await _cacheDir;
+    final absoluteDirectory = path.normalize(path.absolute(directory.path));
+    final absoluteFile = path.normalize(path.absolute(filePath));
+    if (path.dirname(absoluteFile) != absoluteDirectory ||
+        !path
+            .basename(absoluteFile)
+            .startsWith(AppConstants.outputImagePrefix)) {
+      return;
+    }
+
+    final file = File(absoluteFile);
+    if (await file.exists()) await file.delete();
+  }
+
+  Future<void> cleanupStaleTempImages({
+    DateTime? now,
+    Duration maxAge = const Duration(hours: 24),
+  }) async {
+    final directory = await _cacheDir;
+    if (!await directory.exists()) return;
+    final cutoff = (now ?? DateTime.now()).subtract(maxAge);
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! File ||
+          !path
+              .basename(entity.path)
+              .startsWith(AppConstants.outputImagePrefix)) {
+        continue;
+      }
+      try {
+        if ((await entity.lastModified()).isBefore(cutoff)) {
+          await entity.delete();
+        }
+      } on FileSystemException {
+        // A cache entry may disappear between listing and cleanup.
+      }
+    }
   }
 
   Future<String> createOutputPdfPath() async {

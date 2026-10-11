@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -59,7 +60,30 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _pdfLibraryService = widget.pdfLibraryService ?? PdfLibraryService();
+    unawaited(_cleanupStaleTempImages());
     _loadLibrary();
+  }
+
+  Future<void> _cleanupStaleTempImages() async {
+    try {
+      await _storage.cleanupStaleTempImages();
+    } catch (error) {
+      debugPrint('扫描图片缓存清理失败：$error');
+    }
+  }
+
+  Future<void> _deleteUnreferencedDraftImages(
+    Iterable<ScanPage> removedPages,
+  ) async {
+    final retainedPaths = _pages
+        .expand((page) => [page.originalImagePath, page.processedImagePath])
+        .toSet();
+    final removedPaths =
+        removedPages
+            .expand((page) => [page.originalImagePath, page.processedImagePath])
+            .toSet()
+          ..removeAll(retainedPaths);
+    await Future.wait(removedPaths.map(_storage.deleteTempImage));
   }
 
   Future<void> _loadLibrary() async {
@@ -809,6 +833,7 @@ class _HomePageState extends State<HomePage> {
         );
 
         if (!mounted) {
+          await _storage.deleteTempImage(processedPath);
           return;
         }
 
@@ -822,6 +847,8 @@ class _HomePageState extends State<HomePage> {
                   : ScanMode.originalColor,
             );
           });
+        } else {
+          await _storage.deleteTempImage(processedPath);
         }
       } finally {
         if (mounted) {
@@ -892,6 +919,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       await _loadLibrary();
+      final completedPages = List<ScanPage>.of(_pages);
       setState(() {
         _recentNames = [
           safeName,
@@ -899,6 +927,7 @@ class _HomePageState extends State<HomePage> {
         ].take(10).toList();
         _pages.clear();
       });
+      await _deleteUnreferencedDraftImages(completedPages);
 
       await navigator.push<void>(
         MaterialPageRoute(
@@ -929,6 +958,7 @@ class _HomePageState extends State<HomePage> {
 
       final index = _pages.indexWhere((item) => item.id == page.id);
       if (index < 0) {
+        await _storage.deleteTempImage(rotatedPath);
         return;
       }
 
@@ -938,6 +968,7 @@ class _HomePageState extends State<HomePage> {
           rotation: (_pages[index].rotation + 90) % 360,
         );
       });
+      await _deleteUnreferencedDraftImages([page]);
     } catch (error) {
       if (!mounted) {
         return;
@@ -969,6 +1000,7 @@ class _HomePageState extends State<HomePage> {
 
     final index = _pages.indexWhere((item) => item.id == page.id);
     if (index < 0) {
+      await _deleteUnreferencedDraftImages([result.page]);
       return;
     }
 
@@ -978,10 +1010,12 @@ class _HomePageState extends State<HomePage> {
         createdAt: page.createdAt,
       );
     });
+    await _deleteUnreferencedDraftImages([page]);
   }
 
-  void _deletePage(ScanPage page) {
+  Future<void> _deletePage(ScanPage page) async {
     setState(() => _pages.removeWhere((item) => item.id == page.id));
+    await _deleteUnreferencedDraftImages([page]);
   }
 
   void _reorderPages(int oldIndex, int newIndex) {
