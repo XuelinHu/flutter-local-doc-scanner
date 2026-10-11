@@ -119,7 +119,7 @@ void main() {
       final service = _RecordingAiService();
       final settings = _MemorySettings(
         AiDocumentSettings(
-          endpoint: 'http://192.168.1.9:11434/v1/chat/completions',
+          endpoint: 'http://127.0.0.1:11434/v1/chat/completions',
           model: 'vision-test',
           apiKey: 'test-key',
         ),
@@ -186,4 +186,57 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('rejects a LAN HTTP key before saving or loading a scan', (
+    tester,
+  ) async {
+    final settings = _MemorySettings(
+      const AiDocumentSettings(
+        endpoint: 'http://192.168.1.9:8999/v1/chat/completions',
+        model: 'vision-test',
+        apiKey: 'test-key',
+      ),
+    );
+    var imageLoads = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AiDocumentPage(
+            pages: [
+              ScanPage(
+                id: 'page-1',
+                originalImagePath: '/local/page.png',
+                processedImagePath: '/local/page.png',
+                createdAt: DateTime.utc(2026),
+                rotation: 0,
+                scanMode: ScanMode.originalColor,
+              ),
+            ],
+            settingsRepository: settings,
+            loadImageBytes: (_) async {
+              imageLoads++;
+              return [1, 2, 3];
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('上传此页并识别文字'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('上传此页并识别文字'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('发送 API Key 必须使用 HTTPS；HTTP 仅允许本机回环地址。'),
+      findsOneWidget,
+    );
+    expect(settings.saved, isNull);
+    expect(imageLoads, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

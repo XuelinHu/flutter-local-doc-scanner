@@ -125,6 +125,7 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
       _result = '';
     });
     try {
+      AiDocumentService.validateEndpoint(_endpoint.text, apiKey: _apiKey.text);
       await _settingsRepository.save(_settings);
       final page = widget.pages[_selectedIndex];
       final result = await widget.service.recognizeImage(
