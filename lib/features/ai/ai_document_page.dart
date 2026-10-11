@@ -31,7 +31,9 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
   int _selectedIndex = 0;
   bool _loadingSettings = true;
   bool _sending = false;
+  bool _checkingModel = false;
   String? _error;
+  String? _capabilityInfo;
   String _result = '';
 
   @override
@@ -67,6 +69,33 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
     model: _model.text,
     apiKey: _apiKey.text,
   );
+
+  Future<void> _checkModel() async {
+    if (_checkingModel || _sending) return;
+    setState(() {
+      _checkingModel = true;
+      _error = null;
+      _capabilityInfo = null;
+    });
+    try {
+      final supportsVision = await widget.service.checkOllamaVisionCapability(
+        settings: _settings,
+      );
+      if (mounted) {
+        setState(
+          () => _capabilityInfo = supportsVision
+              ? '模型支持图像输入。'
+              : '模型未声明图像输入能力，请选择视觉模型。',
+        );
+      }
+    } on AiDocumentException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = '模型能力检查失败，请检查 Ollama 配置。');
+    } finally {
+      if (mounted) setState(() => _checkingModel = false);
+    }
+  }
 
   Future<void> _saveSettings() async {
     try {
@@ -137,6 +166,7 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
           TextField(
             controller: _endpoint,
             keyboardType: TextInputType.url,
+            onChanged: (_) => setState(() => _capabilityInfo = null),
             decoration: const InputDecoration(
               labelText: 'Chat Completions 地址',
               hintText: 'http://192.168.1.9:11434/v1/chat/completions',
@@ -144,6 +174,7 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
           ),
           TextField(
             controller: _model,
+            onChanged: (_) => setState(() => _capabilityInfo = null),
             decoration: const InputDecoration(
               labelText: '视觉模型名称',
               hintText: '填写已部署的多模态模型',
@@ -154,14 +185,32 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
             obscureText: true,
             decoration: const InputDecoration(labelText: 'API Key（本机安全存储，可留空）'),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _sending ? null : _saveSettings,
-              icon: const Icon(Icons.lock_outline),
-              label: const Text('保存连接'),
-            ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: _sending || _checkingModel ? null : _checkModel,
+                icon: _checkingModel
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.fact_check_outlined),
+                label: Text(_checkingModel ? '正在检查' : '检查视觉能力'),
+              ),
+              TextButton.icon(
+                onPressed: _sending || _checkingModel ? null : _saveSettings,
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('保存连接'),
+              ),
+            ],
           ),
+          if (_capabilityInfo != null)
+            Text(
+              _capabilityInfo!,
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            ),
         ],
         const Divider(height: 24),
         if (widget.pages.isEmpty)
@@ -204,7 +253,9 @@ class _AiDocumentPageState extends State<AiDocumentPage> {
             ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: _sending || _loadingSettings ? null : _recognize,
+            onPressed: _sending || _checkingModel || _loadingSettings
+                ? null
+                : _recognize,
             icon: _sending
                 ? const SizedBox.square(
                     dimension: 18,

@@ -22,6 +22,80 @@ void main() {
   });
 
   test(
+    'checks Ollama vision capability without sending an image or API key',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final capabilities = <List<String>>[
+        ['completion', 'vision'],
+        ['completion'],
+      ];
+      final handled = Completer<void>();
+      var requestIndex = 0;
+      final subscription = server.listen((request) async {
+        try {
+          expect(request.method, 'POST');
+          expect(request.uri.path, '/api/show');
+          expect(
+            request.headers.value(HttpHeaders.authorizationHeader),
+            isNull,
+          );
+          expect(jsonDecode(await utf8.decoder.bind(request).join()), {
+            'model': 'vision-test',
+          });
+          final expected = capabilities[requestIndex];
+          request.response
+            ..headers.contentType = ContentType.json
+            ..write(jsonEncode({'capabilities': expected}));
+          await request.response.close();
+          requestIndex++;
+          if (requestIndex == capabilities.length) handled.complete();
+        } catch (error, stack) {
+          if (!handled.isCompleted) handled.completeError(error, stack);
+        }
+      });
+      final settings = AiDocumentSettings(
+        endpoint: 'http://127.0.0.1:${server.port}/v1/chat/completions',
+        model: 'vision-test',
+        apiKey: 'must-not-be-sent',
+      );
+
+      expect(
+        await const AiDocumentService().checkOllamaVisionCapability(
+          settings: settings,
+        ),
+        isTrue,
+      );
+      expect(
+        await const AiDocumentService().checkOllamaVisionCapability(
+          settings: settings,
+        ),
+        isFalse,
+      );
+      await handled.future;
+      await subscription.cancel();
+      await server.close(force: true);
+    },
+  );
+
+  test('restricts Ollama capability checks to private hosts', () async {
+    await expectLater(
+      const AiDocumentService().checkOllamaVisionCapability(
+        settings: const AiDocumentSettings(
+          endpoint: 'https://api.example.com/v1/chat/completions',
+          model: 'vision-test',
+        ),
+      ),
+      throwsA(
+        isA<AiDocumentException>().having(
+          (error) => error.message,
+          'message',
+          contains('局域网或本机'),
+        ),
+      ),
+    );
+  });
+
+  test(
     'sends the selected image to a multimodal OpenAI-compatible endpoint',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

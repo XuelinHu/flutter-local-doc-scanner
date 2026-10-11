@@ -25,6 +25,11 @@ class _RecordingAiService extends AiDocumentService {
   String? receivedFileName;
 
   @override
+  Future<bool> checkOllamaVisionCapability({
+    required AiDocumentSettings settings,
+  }) async => true;
+
+  @override
   Future<String> recognizeImage({
     required AiDocumentSettings settings,
     required List<int> imageBytes,
@@ -57,6 +62,55 @@ void main() {
     expect(find.text('先拍摄或导入一页扫描图片。'), findsOneWidget);
     expect(find.text('仅在点击上传后发送当前选中的扫描页。图像可能包含个人信息。'), findsOneWidget);
     expect(find.text('视觉模型名称'), findsOneWidget);
+    expect(find.text('检查视觉能力'), findsOneWidget);
+  });
+
+  testWidgets('model capability check does not load or upload a scan page', (
+    tester,
+  ) async {
+    final service = _RecordingAiService();
+    final settings = _MemorySettings(
+      const AiDocumentSettings(
+        endpoint: 'http://192.168.1.9:11434/v1/chat/completions',
+        model: 'vision-test',
+        apiKey: 'test-key',
+      ),
+    );
+    var imageLoads = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AiDocumentPage(
+            pages: [
+              ScanPage(
+                id: 'page-1',
+                originalImagePath: '/local/page.png',
+                processedImagePath: '/local/page.png',
+                createdAt: DateTime.utc(2026),
+                rotation: 0,
+                scanMode: ScanMode.originalColor,
+              ),
+            ],
+            settingsRepository: settings,
+            service: service,
+            loadImageBytes: (_) async {
+              imageLoads++;
+              return [1, 2, 3];
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('检查视觉能力'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('模型支持图像输入。'), findsOneWidget);
+    expect(imageLoads, 0);
+    expect(service.receivedImage, isNull);
+    expect(settings.saved, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(

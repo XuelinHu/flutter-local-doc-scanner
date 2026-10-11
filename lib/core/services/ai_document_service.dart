@@ -91,6 +91,54 @@ class AiDocumentService {
         (first == 192 && second == 168);
   }
 
+  Future<bool> checkOllamaVisionCapability({
+    required AiDocumentSettings settings,
+  }) async {
+    final chatUri = validateEndpoint(settings.endpoint);
+    if (!_isPrivateHost(chatUri.host)) {
+      throw const AiDocumentException('模型能力检查只支持局域网或本机 Ollama 地址。');
+    }
+    final model = settings.model.trim();
+    if (model.isEmpty) {
+      throw const AiDocumentException('请先填写模型名称。');
+    }
+
+    final uri = chatUri.replace(path: '/api/show', query: null, fragment: null);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+    try {
+      final request = await client.postUrl(uri);
+      request.followRedirects = false;
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'model': model}));
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      final bytes = await _readLimited(
+        response,
+        64 * 1024,
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AiDocumentException(
+          'Ollama 模型信息查询失败（HTTP ${response.statusCode}）；请确认服务地址和模型名。',
+        );
+      }
+      final decoded = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final capabilities = decoded['capabilities'];
+      if (capabilities is! List) {
+        throw const AiDocumentException('Ollama 未返回模型能力信息，无法确认是否支持图像输入。');
+      }
+      return capabilities.whereType<String>().contains('vision');
+    } on TimeoutException {
+      throw const AiDocumentException('查询 Ollama 模型信息超时，请检查局域网连接。');
+    } on SocketException {
+      throw const AiDocumentException('无法连接 Ollama 模型信息接口，请检查地址和局域网连接。');
+    } on FormatException {
+      throw const AiDocumentException('Ollama 返回的模型信息格式无效。');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Future<String> recognizeImage({
     required AiDocumentSettings settings,
     required List<int> imageBytes,
