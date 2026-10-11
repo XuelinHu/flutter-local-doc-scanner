@@ -83,7 +83,13 @@ class _HomePageState extends State<HomePage> {
             .expand((page) => [page.originalImagePath, page.processedImagePath])
             .toSet()
           ..removeAll(retainedPaths);
-    await Future.wait(removedPaths.map(_storage.deleteTempImage));
+    for (final path in removedPaths) {
+      try {
+        await _storage.deleteTempImage(path);
+      } on FileSystemException catch (error) {
+        debugPrint('临时扫描图清理失败，将由过期清理回收：$error');
+      }
+    }
   }
 
   Future<void> _loadLibrary() async {
