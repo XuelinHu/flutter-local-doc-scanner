@@ -1,5 +1,10 @@
 # 文档扫描器
 
+<p align="center">
+  <img height="20" alt="Flutter" src="https://img.shields.io/badge/flutter-used-02569B" />
+  <img height="20" alt="Dart SDK 3.11.4+" src="https://img.shields.io/badge/dart-3.11.4%2B-0175C2" />
+</p>
+
 本地拍照、导入、四角检测、裁剪、增强、整理多页扫描并导出 PDF。默认图像与 PDF 只存放在本机，不需要业务数据库或缓存服务器。
 
 ## AI 文档识别
