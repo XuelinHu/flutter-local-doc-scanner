@@ -1,21 +1,17 @@
-# flutter_local_doc_scanner
+# 文档扫描器
 
-A new Flutter project.
+本地拍照、导入、四角检测、裁剪、增强、整理多页扫描并导出 PDF。默认图像与 PDF 只存放在本机，不需要业务数据库或缓存服务器。
 
-## Getting Started
+## AI 文档识别
 
-This project is a starting point for a Flutter application.
+“AI识别”页可配置 OpenAI Chat Completions 兼容的视觉模型（例如局域网 Ollama 中已部署的多模态模型）。默认服务地址为 `http://192.168.1.9:11434/v1/chat/completions`，模型名需填写实际可用的视觉模型。只有点击“上传此页并识别”后，当前选中的扫描图片才会发送到配置的模型；每页限制 8 MiB。识别文本只显示在当前页面，不自动保存到 PDF 或远端数据库。API Key 使用 Android 安全存储；公网接口必须使用 HTTPS。
 
-A few resources to get you started if this is your first Flutter project:
+## 构建
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+flutter test
+flutter analyze
+flutter build apk --release
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-
-## 启动端口
-
-网页入口：原生移动应用，不监听 HTTP 端口；后台服务：无独立后端。完整启动约定见 [PORTS.md](./PORTS.md)。
+release APK 输出到 `dist/document-scanner-release.apk`，供内网安装验收；正式发布需配置自己的签名。

@@ -7,10 +7,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/services/local_storage_service.dart';
+import '../ai/ai_document_page.dart';
 import '../../core/services/document_scan_channel.dart';
 import '../../core/services/pdf_library_service.dart';
 import '../../core/services/pdf_service.dart';
 import '../../core/utils/image_utils.dart';
+import '../../core/utils/local_pagination.dart';
 import '../../models/document_corners.dart';
 import '../../models/pdf_document_record.dart';
 import '../../models/scan_page.dart';
@@ -22,9 +24,10 @@ import '../scanner/scanner_page.dart';
 import 'saved_pdf_card.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({required this.cameras, super.key});
+  const HomePage({required this.cameras, this.pdfLibraryService, super.key});
 
   final List<CameraDescription> cameras;
+  final PdfLibraryService? pdfLibraryService;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -32,10 +35,11 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   static const _uuid = Uuid();
+  static const _documentsPerPage = 10;
 
   final ImagePicker _picker = ImagePicker();
   final PdfService _pdfService = PdfService();
-  final PdfLibraryService _pdfLibraryService = PdfLibraryService();
+  late final PdfLibraryService _pdfLibraryService;
   final LocalStorageService _storage = LocalStorageService.instance;
 
   final List<ScanPage> _pages = <ScanPage>[];
@@ -46,14 +50,15 @@ class _HomePageState extends State<HomePage> {
   int _backgroundProcessingTotal = 0;
   int _backgroundProcessingDone = 0;
   int _selectedTab = 0;
+  int _documentPage = 1;
   String _searchText = '';
-  String _selectedDocumentFilter = '全部';
   bool _autoCropEnabled = true;
   bool _enhanceEnabled = true;
 
   @override
   void initState() {
     super.initState();
+    _pdfLibraryService = widget.pdfLibraryService ?? PdfLibraryService();
     _loadLibrary();
   }
 
@@ -257,7 +262,8 @@ class _HomePageState extends State<HomePage> {
             bottom: false,
             child: switch (_selectedTab) {
               1 => _buildDocumentLibrary(),
-              3 => _buildSettings(),
+              3 => AiDocumentPage(pages: _pages),
+              4 => _buildSettings(),
               _ => _buildModernHome(),
             },
           ),
@@ -294,6 +300,11 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.add_a_photo_outlined),
             selectedIcon: Icon(Icons.add_a_photo_rounded),
             label: '扫描',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.document_scanner_outlined),
+            selectedIcon: Icon(Icons.document_scanner_rounded),
+            label: 'AI识别',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -398,9 +409,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildDocumentLibrary() {
-    final documents = _documents.where((document) {
+    final filteredDocuments = _documents.where((document) {
       return document.name.toLowerCase().contains(_searchText.toLowerCase());
     }).toList();
+    final page = LocalPage<PdfDocumentRecord>.fromList(
+      filteredDocuments,
+      page: _documentPage,
+      pageSize: _documentsPerPage,
+    );
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
       children: [
@@ -408,28 +424,50 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(height: 16),
         _buildSearchField(),
         const SizedBox(height: 14),
-        Wrap(
-          spacing: 8,
-          children: ['全部', '文档', '收据', '名片', '图片'].map((label) {
-            return ChoiceChip(
-              label: Text(label),
-              selected: _selectedDocumentFilter == label,
-              onSelected: (_) =>
-                  setState(() => _selectedDocumentFilter = label),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 4),
         if (_loadingLibrary)
           const Center(child: CircularProgressIndicator())
-        else if (documents.isEmpty)
+        else if (filteredDocuments.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 36),
             child: Center(child: Text('没有匹配的 PDF 文档')),
           )
         else
-          ...documents.map(_buildDocumentCard),
+          ...page.items.map(_buildDocumentCard),
+        if (!_loadingLibrary && filteredDocuments.isNotEmpty)
+          _buildDocumentPagination(page),
       ],
+    );
+  }
+
+  Widget _buildDocumentPagination(LocalPage<PdfDocumentRecord> page) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${page.firstItem}-${page.lastItem} 条，共 ${page.total} 条',
+              style: const TextStyle(color: Color(0xFF737373), fontSize: 12),
+            ),
+          ),
+          IconButton(
+            tooltip: '上一页',
+            onPressed: page.page > 1
+                ? () => setState(() => _documentPage = page.page - 1)
+                : null,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Text('${page.page}/${page.totalPages}'),
+          IconButton(
+            tooltip: '下一页',
+            onPressed: page.page < page.totalPages
+                ? () => setState(() => _documentPage = page.page + 1)
+                : null,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
     );
   }
 
@@ -548,9 +586,12 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildSearchField() {
     return TextField(
-      onChanged: (value) => setState(() => _searchText = value),
+      onChanged: (value) => setState(() {
+        _searchText = value;
+        _documentPage = 1;
+      }),
       decoration: InputDecoration(
-        hintText: '搜索...',
+        hintText: '搜索文档名称',
         prefixIcon: const Icon(Icons.search, size: 18),
         filled: true,
         fillColor: Colors.white,
